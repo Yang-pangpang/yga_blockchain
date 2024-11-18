@@ -11,7 +11,7 @@ const initBlock = {
     hash: '0000a2769ad710da27823be8eaf3bd60d63bd51d79495c5410b6a80536fda35f'
 }
 
-class blockChain {
+class BlockChain {
 
     constructor() {
         this.blockchain = [
@@ -28,6 +28,18 @@ class blockChain {
 
     // 挖矿
     mine() {
+        const newBlock = this.generateNewBlock();
+        // 检验区块是否合法，合法区块新增+1
+        if (this.isValidBlock(newBlock) && this.isValidChain(this.blockchain)) {
+            this.blockchain.push(newBlock);
+            return newBlock;
+        } else {
+            console.log('Error, Invalid Block', newBlock);
+        }
+    }
+
+    // 生成新区快
+    generateNewBlock() {
         // 1: 生成新的区块--- 新的账本
         // 2： 不停的计算hash，直到计算出符合条件的hash值
 
@@ -42,20 +54,14 @@ class blockChain {
             nonce += 1;
             hash = this.computeHash(index, timestamp, prevHash, data, nonce);
         }
-        console.log('mine over:', {
+        return {
             index,
             data,
             prevHash,
             timestamp,
             nonce,
             hash
-        });
-
-    }
-
-    // 生成新区快
-    generateNewBlock() {
-
+        };
     }
 
     // 计算hash
@@ -66,17 +72,44 @@ class blockChain {
             .digest('hex')
 
     }
-
+    computedHashForBlock({index, timestamp, prevHash, data, nonce}) {
+        return this.computeHash(index, timestamp, prevHash, data, nonce);
+    }
     // 校验区块
-    isValidBlock() {
-
+    isValidBlock(newBlock,lastBlock = this.getLastBlock()) {
+        // 1：区块的Index 等于最新的区块index + 1;
+        // 2：区块的timestamp 小于最新区块的timestamp;
+        // 3：最新的区块prevHash 等于最新区块的hash;
+        // 4: 区块的hash,符合难度要求；
+        // 5: 新的hash值是否正确
+        if (newBlock.index !== lastBlock.index + 1) {
+            return false;
+        } else if (newBlock.timestamp <= lastBlock.timestamp) {
+            return false;
+        } else if (newBlock.prevHash !== lastBlock.hash) {
+            return false;
+        } else if (newBlock.hash.slice(0, this.difficulty) !== '0'.repeat(this.difficulty)) {
+            return false;
+        } else if (newBlock.hash !== this.computedHashForBlock(newBlock)) {
+            return false;
+        }
+        return true;
     }
 
-    // 校验hash
-    isValidHash() {
-
+    // 校验CHain
+    isValidChain(chain = this.blockchain) {
+        for(let i = chain.length - 1; i>=1;i--) {
+            if(!this.isValidBlock(chain[i],chain[i - 1])) {
+                return false;
+            }
+        }
+        if (JSON.stringify(chain[0]) !== JSON.stringify(initBlock)) {
+            return  false;
+        }
+        return true;
     }
 }
 
-let bc = new blockChain();
-bc.mine();
+let bc = new BlockChain();
+
+module.exports = BlockChain
