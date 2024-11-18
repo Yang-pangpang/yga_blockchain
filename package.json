@@ -9,6 +9,7 @@
   "author": "Yonga",
   "license": "ISC",
   "dependencies": {
+    "cli-table": "^0.3.11",
     "vorpal": "^1.12.0"
   }
 }
