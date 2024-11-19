@@ -25,13 +25,52 @@ class BlockChain {
     getLastBlock() {
         return this.blockchain[this.blockchain.length - 1];
     }
+    // 转账
+    transfer(from, to, amount) {
+        // 1: 签名校验(后续)
+        if(from !== '0') {
+            // 交易非挖矿
+            const balance = this.balance(from);
+            if(balance < amount) {
+                console.log('not enough balance',from ,balance,amount);
+                return
+            }
+        }
+        const transObj = {from, to, amount};
+        this.data.push(transObj);
+        return transObj;
+    }
+    // 查询余额
+    balance(address) {
+        let balance = 0;
+        this.blockchain.forEach(block=>{
+            if(!Array.isArray(block.data)) {
+                // 创世区块
+                return;
+            }
+            block.data.forEach(bal=>{
+                if(address === bal.from) {
+                    balance -= bal.amount;
+                }
+                if(address === bal.to) {
+                    balance += bal.amount;
+                }
+            })
+        })
+        return balance;
+    }
+    // 挖矿----打包交易
+    mine(address) {
+        // 1: 生成新的区块--- 新的账本
+        // 2： 不停的计算hash，直到计算出符合条件的hash值
 
-    // 挖矿
-    mine() {
+        // 3: 挖矿结束，矿工奖励,每次挖矿成功给100
+        this.transfer('0', address, 100);
         const newBlock = this.generateNewBlock();
         // 检验区块是否合法，合法区块新增+1
         if (this.isValidBlock(newBlock) && this.isValidChain(this.blockchain)) {
             this.blockchain.push(newBlock);
+            this.data = [];
             return newBlock;
         } else {
             console.log('Error, Invalid Block', newBlock);
@@ -40,12 +79,10 @@ class BlockChain {
 
     // 生成新区快
     generateNewBlock() {
-        // 1: 生成新的区块--- 新的账本
-        // 2： 不停的计算hash，直到计算出符合条件的hash值
 
         let nonce = 0;
         const index = this.blockchain.length;
-        const data = 'this is Genesis block';
+        const data = this.data;
         const prevHash = this.getLastBlock().hash;
         const timestamp = new Date().getTime();
         let hash = this.computeHash(index, timestamp, prevHash, data, nonce);
@@ -72,11 +109,13 @@ class BlockChain {
             .digest('hex')
 
     }
+
     computedHashForBlock({index, timestamp, prevHash, data, nonce}) {
         return this.computeHash(index, timestamp, prevHash, data, nonce);
     }
+
     // 校验区块
-    isValidBlock(newBlock,lastBlock = this.getLastBlock()) {
+    isValidBlock(newBlock, lastBlock = this.getLastBlock()) {
         // 1：区块的Index 等于最新的区块index + 1;
         // 2：区块的timestamp 小于最新区块的timestamp;
         // 3：最新的区块prevHash 等于最新区块的hash;
@@ -98,16 +137,17 @@ class BlockChain {
 
     // 校验CHain
     isValidChain(chain = this.blockchain) {
-        for(let i = chain.length - 1; i>=1;i--) {
-            if(!this.isValidBlock(chain[i],chain[i - 1])) {
+        for (let i = chain.length - 1; i >= 1; i--) {
+            if (!this.isValidBlock(chain[i], chain[i - 1])) {
                 return false;
             }
         }
         if (JSON.stringify(chain[0]) !== JSON.stringify(initBlock)) {
-            return  false;
+            return false;
         }
         return true;
     }
+
 }
 
 let bc = new BlockChain();
