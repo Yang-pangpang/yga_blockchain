@@ -9,6 +9,7 @@ console.log(keys);
 
 
 generateKeys();
+
 // 1: 获取公私钥对（持久化）
 function generateKeys() {
     const fileName = './wallet.json';
@@ -16,8 +17,8 @@ function generateKeys() {
         let res = JSON.parse(fs.readFileSync(fileName));
         if (res.prv && res.pub && getPub(res.prv) === res.pub) {
             keypair = ec.keyFromPrivate(res.prv);
-            return  res;
-        }else {
+            return res;
+        } else {
             // 验证失败，重新申城
             throw 'not valid wallet.json'
         }
@@ -38,7 +39,6 @@ function getPub(prv) {
 }
 
 
-
 // 2: 签名
 
 function sign({from, to, amount}) {
@@ -51,20 +51,27 @@ function sign({from, to, amount}) {
 
 // 3: 校验签名
 function verify({from, to, amount, signature}, pub) {
-    const keypairTemp = ec.keyFromPublic(pub,'hex');
+    const keypairTemp = ec.keyFromPublic(pub, 'hex');
     const bufferMsg = Buffer.from(`${from}-${to}-${amount}`);
-    return keypairTemp.verify(bufferMsg,signature);
+    return keypairTemp.verify(bufferMsg, signature);
 
 }
 
-const trans = {from:'yonga',to:'live',amount:100};
-// const trans1 = {from:'yonga1',to:'live',amount:'100'};
+module.exports = {
+    sign,
+    verify,
+    keys
 
-const signature = sign(trans);
-trans.signature = signature;
-console.log(signature);
+}
 
-const isVerify = verify(trans,keys.pub);
-console.log(isVerify)
+// const trans = {from:'yonga',to:'live',amount:100};
+// // const trans1 = {from:'yonga1',to:'live',amount:'100'};
+//
+// const signature = sign(trans);
+// trans.signature = signature;
+// console.log(signature);
+//
+// const isVerify = verify(trans,keys.pub);
+// console.log(isVerify)
 
 

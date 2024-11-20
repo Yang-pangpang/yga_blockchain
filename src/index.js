@@ -2,6 +2,7 @@ const vorpal = require('vorpal')();
 const BlockChain = require('./blockChain');
 const Tbale = require('cli-table');
 const blockchain = new BlockChain();
+const rsa = require('./rsa');
 
 
 function formatLog(data) {
@@ -31,18 +32,18 @@ function formatLog(data) {
 //     });
 
 vorpal
-    .command('trans <from> <to> <amount>','转账')
+    .command('trans <to> <amount>','转账')
     .action(function (args,callback){
-        let trans = blockchain.transfer(args.from,args.to,args.amount);
+        let trans = blockchain.transfer(rsa.keys.pub,args.to,args.amount);
         if(trans) {
             formatLog(trans);
             callback();
         }
     })
 vorpal
-    .command('mine <address>' ,  '挖矿')
+    .command('mine' ,  '挖矿')
     .action(function (args, callback) {
-        const newBlock = blockchain.mine(args.address);
+        const newBlock = blockchain.mine(rsa.keys.pub);
         if (newBlock) {
             formatLog(newBlock);
         }
@@ -73,7 +74,13 @@ vorpal
         formatLog(blockchain.blockchain);
         callback();
     });
-
+ // 查看本地地址
+vorpal
+    .command('pub', '查看本地地址')
+    .action(function (args, callback) {
+        console.log(rsa.keys.pub);
+        callback();
+    });
 vorpal.exec('help')
 
 vorpal
