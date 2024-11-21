@@ -26,7 +26,7 @@ class BlockChain {
         this.peers = [];
         this.remote = [];
         // 种子节点
-        this.seed = {port: 8001, address: 'localhost'};
+        this.seed = {port: 5300, address: 'localhost'};
         this.udp = dgram.createSocket('udp4');
         this.init();
     }
@@ -39,28 +39,42 @@ class BlockChain {
     bindP2p() {
         this.udp.on('message', (data, remote) => {
             const {address, port} = remote;
-            const action = JSON.parse(data);
-            if (action.type) {
-                this.dispatch(action, {address, port});
+            try {
+                const action = JSON.parse(data);
+                if (action.type) {
+                    this.dispatch(action, {address, port});
+                }
+            } catch (err) {
+                console.error('Failed to process message:', err.message);
             }
-        })
+        });
+
         this.udp.on('listening', () => {
             const address = this.udp.address();
-            console.log('udp监听完毕 端口是' + address.port);
-        })
-        // 区分种子节点和普通节点    普通节点的端口0即可，随便一个空闲端口即可
-        // 种子节点端口必须约定端口号
-        console.log(process.argv);
+            console.log(`UDP listening on ${address.address}:${address.port}`);
+        });
+
+        this.udp.on('error', (err) => {
+            console.error('UDP socket error:', err.message);
+        });
+
         const port = Number(process.argv[2]) || 0;
         this.startNode(port);
     }
 
     startNode(port) {
-        this.udp.bind(port);
-        // 如果不是种子节点,需要发送一个消息告诉种子节点
-        if (port !== 8001) {
+        this.udp.bind(port, (err) => {
+            if (err) {
+                console.error(`Failed to bind port ${port}:`, err.message);
+                process.exit(1);
+            }
+        });
+
+        if (port !== this.seed.port) {
             this.send({type: 'newPeer'}, this.seed.port, this.seed.address);
         }
+
+        this.peers.push(this.seed);
     }
 
     send(message, port, address) {
@@ -85,7 +99,7 @@ class BlockChain {
                     data: remote
                 }, remote.port, remote.address)
                 // 2: 现在全部节点的列表
-                this.seed({
+                this.send({
                     type: 'peerList',
                     data: this.peers
                 }, remote.port, remote.address)
@@ -95,8 +109,23 @@ class BlockChain {
                     data: remote
                 })
                 // 4：告诉你现在区块链的数据
+                this.send({
+                    type: 'blockchain',
+                    data: JSON.stringify({
+                        blockchain: this.blockchain,
+                        trans:this.data
+                    })
+                }, remote.port, remote.address)
                 this.peers.push(remote);
                 console.log('new peer', remote);
+                break;
+            // 同步本地区块链
+            case 'blockchain':
+                let allData = JSON.parse(action.data);
+                let newChain = allData.blockchain;
+                let newTrans = allData.trans;
+                this.replaceChain(newChain);
+                this.replaceTrans(newTrans);
                 break;
             case 'remoteAddress':
                 // 存储远程消息   退出的时候用
@@ -109,20 +138,59 @@ class BlockChain {
             case 'board':
                 let remotePeer = action.data;
                 this.peers.push(remotePeer);
-                console.log('[信息],新增了一条peer');
+                console.log('【信息】,新增了一条peer');
                 this.send({type: 'hi'}, remote.port, remote.address)
                 break;
+            case 'trans':
+                // 网络上收到的交易请求
+                // 是否有重复交易
+                if (!this.data.find(v => this.isEqualObj(v, action.data))) {
+                    console.log('【信息】:新的交易');
+                    this.addTrans(action.data);
+                    this.boardCast({type: 'trans', data: action.data})
+                }
+                break;
             case 'hi':
-                console.log(`${remote.address}:${remote.port}: ${action.data}`)
+                // console.log(`${remote.address}:${remote.port}: ${action.data}`)
+                break;
+            case 'mine':
+                // 网络上有人挖矿成功
+                const lastBlock = this.getLastBlock();
+                if (lastBlock.hash === action.data.hash) {
+                    // 重复的消息
+                    return
+                }
+                if (this.isValidBlock(action.data, lastBlock)) {
+                    console.log('【信息】：有人挖矿成功');
+                    this.blockchain.push(action.data);
+                    // 清空本地data信息
+                    this.data = [];
+                    this.boardCast({
+                        type: 'mine',
+                        data: action.data
+                    })
+                } else {
+                    console.log('挖矿的区块不合法')
+                }
                 break;
             default:
                 console.log('this is default');
         }
     }
 
-    isEqualPeer(peer1, peer2) {
-        return peer1.address === peer2.address && peer1.port === peer2.port
+    isEqualObj(obj1, obj2) {
+        const key1 = Object.keys(obj1);
+        const key2 = Object.keys(obj2);
+        if (key1.length !== key2.length) {
+            // key数量不同
+            return false;
+        }
+        return key1.every(key => obj1[key] === obj2[key]);
     }
+
+    // isEqualPeer(peer1, peer2) {
+    //     return peer1.address === peer2.address && peer1.port === peer2.port
+    // }
 
     addPeers(peers) {
         peers.forEach(peer => {
@@ -134,7 +202,7 @@ class BlockChain {
 
     bindExit() {
         process.on('exit', () => {
-            console.log('[信息]: 离开信息')
+            console.log('【信息】: 离开信息')
         })
     }
 
@@ -145,6 +213,9 @@ class BlockChain {
 
     // 转账
     transfer(from, to, amount) {
+        const timestamp = new Date().getTime();
+        const signature = rsa.sign({from, to, amount, timestamp});
+        const signTaw = {from, to, amount, timestamp, signature};
         // 1: 签名校验(后续)
         if (from !== '0') {
             // 交易非挖矿
@@ -153,11 +224,9 @@ class BlockChain {
                 console.log('not enough balance', from, balance, amount);
                 return
             }
+            this.boardCast({type: 'trnas', data: signTaw});
         }
 
-        const sign = rsa.sign({from, to, amount});
-        console.log(sign)
-        const signTaw = {from,to,amount,sign};
         this.data.push(signTaw);
         return signTaw;
     }
@@ -182,18 +251,45 @@ class BlockChain {
         return balance;
     }
 
+    isValidTransfer(trans) {
+        // 检验是否是合法转账
+        return rsa.verify(trans, trans.from)
+    }
+
+    addTrans(trans) {
+        if (this.isValidTransfer(trans)) {
+            this.data.push(trans);
+        }
+    }
+    replaceTrans(trans) {
+        if(trans.every(v=>this.isValidTransfer(v))) {
+            this.data = trans;
+        }
+    }
     // 挖矿----打包交易
     mine(address) {
+        // 校验所有交易合法性
+        // 只要有不合法的就报错
+        // if(this.data.every(v=>this.isValidTransfer(v))) {
+        //     console.log('trans not valid');
+        //     return
+        // }
+        this.data = this.data.filter(v => this.isValidTransfer(v));
         // 1: 生成新的区块--- 新的账本
         // 2： 不停的计算hash，直到计算出符合条件的hash值
 
         // 3: 挖矿结束，矿工奖励,每次挖矿成功给100
+
         this.transfer('0', address, 100);
+
+
         const newBlock = this.generateNewBlock();
         // 检验区块是否合法，合法区块新增+1
         if (this.isValidBlock(newBlock) && this.isValidChain(this.blockchain)) {
             this.blockchain.push(newBlock);
             this.data = [];
+            console.log('挖矿成功')
+            this.boardCast({type: 'mine', data: newBlock});
             return newBlock;
         } else {
             console.log('Error, Invalid Block', newBlock);
@@ -270,6 +366,20 @@ class BlockChain {
         }
         return true;
     }
+
+    replaceChain(newChain) {
+        // 先不校验交易
+        if (newChain.length === 1) {
+            return
+        }
+        if (this.isValidChain(newChain) && newChain.length > this.blockchain.length) {
+            // 复制一份
+            this.blockchain = JSON.parse(JSON.stringify(newChain))
+        } else {
+            console.log('[error]:不合法链')
+        }
+    }
+
 
 }
 

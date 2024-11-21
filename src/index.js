@@ -1,17 +1,20 @@
 const vorpal = require('vorpal')();
 const BlockChain = require('./blockChain');
-const Tbale = require('cli-table');
+const Table = require('cli-table');
 const blockchain = new BlockChain();
 const rsa = require('./rsa');
 
 
 function formatLog(data) {
+    if(!data || data.length === 0) {
+        return
+    }
     if (!Array.isArray((data))) {
         data = [data];
     }
     const first = data[0];
     const head = Object.keys(first);
-    const table = new Tbale({
+    const table = new Table({
         head: head,
         colWidths: new Array(head.length).fill(20)
     });
@@ -69,7 +72,7 @@ vorpal
     })
 
 vorpal
-    .command('chain', '查看区块链')
+    .command('blockchain', '查看区块链')
     .action(function (args, callback) {
         formatLog(blockchain.blockchain);
         callback();
@@ -81,6 +84,30 @@ vorpal
         console.log(rsa.keys.pub);
         callback();
     });
+    // 查看网络节点列表
+vorpal
+    .command('peers', '查看网络节点列表')
+    .action(function (args, callback) {
+        formatLog(blockchain.peers);
+        callback();
+    });
+vorpal
+    .command('chat <message>', '跟别的节点通信')
+    .action(function (args, callback) {
+        blockchain.boardCast({
+            type:'hi',
+            data:args.message
+        })
+        callback();
+    });
+vorpal
+    .command('pending', '查看还没被打包的交易')
+    .action(function (args, callback) {
+        formatLog(blockchain.data);
+        callback();
+    });
+
+
 vorpal.exec('help')
 
 vorpal
